@@ -1,0 +1,167 @@
+---
+title: "Practical Machine Learning-Assessment"
+author: "sanjay pandey"
+date: "September 29, 2015"
+output: html_document
+---
+This document presents the results of the Practical Machine Learning Peer Assessments in a report using a single R markdown document that can be processed by knitr and be transformed into an HTML file.
+
+## Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement Â- a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks.
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this data set, the participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here (see the section on the Weight Lifting Exercise Dataset).
+In this project, the goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants toto predict the manner in which praticipants did the exercise.
+Since we have a data set with too many columns and we need make a class prediction, therefore decided to implement a random forests model, that's no need cross-validation or a separate test set to get an unbiased estimate of the test set error.
+
+The dependent variable or response is the "classe" variable in the training set.
+
+##Loading and cleaning data
+
+```{r}
+training <- read.csv("pml-training.csv", header=T, sep=",", na.strings=c("NA",""))
+testing<-read.csv("pml-testing.csv", header=T,sep=",", na.strings=c("NA",""))
+dim(training)
+```
+
+## Data Exploration
+
+Firstly Load the Libraries and Set Seed for results to be Reproducible.
+```{r}
+library(caret)
+library(randomForest)
+set.seed(45)
+```
+
+The following approaches for used for reducing the number of predictors.
+
+** Remove variables that have too many NA values.
+
+As there are many variables that are of value NA we remove those columns that have 70% of NAs,inorder to find out which Columns satisfy the criteria
+```{r}
+##this will return the total number of Non NAs values in each Column
+ColSums<-colSums(!is.na(training[,-ncol(training)]))
+head(ColSums)
+```
+
+```{r}
+## this gives the number of valid columns
+sum(colSums(!is.na(training[,-ncol(training)]))>=0.7*nrow(training)) 
+```
+
+Subset the Data by considering only valid columns
+
+```{r}
+
+validCol<-colSums(!is.na(training[,-ncol(training)]))>=0.7*nrow(training)
+trainingWithlessNA<-training[,validCol]
+dim(trainingWithlessNA)
+```
+
+**Remove columns having near zero variance
+```{r}
+
+nzv <- nearZeroVar(trainingWithlessNA, saveMetrics = TRUE) ##this creates a matrix
+head(nzv)
+```
+
+```{r}
+
+#this will return only those col numbers
+nzv <- nearZeroVar(trainingWithlessNA)
+trainingWithNozeroVar <- trainingWithlessNA[, -nzv]
+dim(trainingWithNozeroVar)
+```
+
+**Remove the ID Variable
+```{r}
+trainingWithNozeroVarandID<-trainingWithNozeroVar[,-1]
+dim(trainingWithNozeroVarandID)
+```
+
+**Remove those variable having high correlation
+```{r}
+##number of the columns with numeric values
+sum(sapply(trainingWithNozeroVarandID, is.numeric))
+```
+
+```{r}
+##VAriables with high correraltion
+corrMatrix <- 
+  cor(na.omit(trainingWithNozeroVarandID[sapply(trainingWithNozeroVarandID, is.numeric)]))
+dim(corrMatrix)
+```
+
+```{r}
+##A cut-off of 90% is kept 
+highCorr<-findCorrelation(corrMatrix, cutoff = .90, verbose = T)
+## Final Training set 
+Final_training<-trainingWithNozeroVarandID[,-highCorr]
+```
+
+```{r}
+dim(Final_training)
+```
+
+The same is to be done with testing Data
+```{r}
+testingWithLessNA<-testing[,validCol]
+testingWithNoZeroVar<-testingWithLessNA[,-nzv]
+testingWithNoZeroVarAndID<-testingWithNoZeroVar[,-1]
+Final_testing<-testingWithNoZeroVarAndID[,-highCorr]
+dim(Final_testing)
+```
+
+## Analysis
+### Partitioning the training Data
+```{r}
+
+set.seed(45)
+inTrain<-createDataPartition(Final_training$classe,p=0.75,list=F)
+modelTrain<-Final_training[inTrain,]
+modeltest<-Final_training[-inTrain,]
+```
+
+### Model Fitting
+
+Random forests build lots of bushy trees, and then average them to reduce the variance.In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally, during the execution. So, we proced with the training the model (Random Forest) with the training data set.
+
+```{r}
+
+set.seed(45)
+require(randomForest)
+modelFit<-randomForest(classe~.,data=Final_training,importance=TRUE)
+modelFit
+```
+
+Number of variables tried at each split is 7 
+It means every time we only randomly use 7 predictors to grow the tree.
+```{r}
+varImpPlot(modelFit)
+```
+
+## Out-of Sample Accuracy
+
+Now lets evaluate this tree on the testing data.
+Accuracy is 1 (100%)
+```{r}
+
+confusionMatrix(predict(modelFit,newdata=modeltest[,-ncol(modeltest)]),
+                modeltest$classe)
+```
+
+## Prediction
+
+Now lets Predict for the Final_testing Data
+```{r}
+predictions <- predict(modelFit,newdata=Final_testing)
+predictions
+```
+
+Those answers are going to submit to website for grading
+
+
+
+
+
+
+
+
